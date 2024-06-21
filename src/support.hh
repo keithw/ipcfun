@@ -1,19 +1,11 @@
+#pragma once
+
 #include <papi.h>
-#include <papiStdEventDefs.h>
-#include <sys/mman.h>
-
-#include <Eigen/Dense>
-#include <cstdlib>
-#include <iostream>
-#include <stdexcept>
+#include <sched.h>
 #include <string>
-#include <vector>
+#include <system_error>
 
-using namespace std;
-
-using MyMatrix = Eigen::Matrix<double, 256, 256>;
-
-const char* str_or_null( const char* x )
+inline const char* str_or_null( const char* x )
 {
   return x ? x : "(null)";
 }
@@ -25,7 +17,7 @@ class IPCCounter
   static inline int CheckPAPICall( const char* attempt, int ret )
   {
     if ( ret != PAPI_OK ) {
-      throw runtime_error( string( attempt ) + ": " + str_or_null( PAPI_strerror( ret ) ) );
+      throw std::runtime_error( std::string( attempt ) + ": " + str_or_null( PAPI_strerror( ret ) ) );
     }
     return ret;
   }
@@ -76,53 +68,18 @@ public:
   int error_code() const { return error_code_; }
 };
 
-int CheckSystemCall( const char* attempt, int ret )
+inline int CheckSystemCall( const char* attempt, int ret )
 {
   if ( ret < 0 ) {
-    throw tagged_error( system_category(), attempt, errno );
+    throw tagged_error( std::system_category(), attempt, errno );
   }
   return ret;
 }
 
-int main()
+static void lock_to_CPU_zero()
 {
-  ios::sync_with_stdio( false );
-
-  // Open dummy file
-  int fd = memfd_create( "dummy", 0 );
-  if ( fd < 0 ) {
-    throw runtime_error( "memfd_create" );
-  }
-
-  // Initialize matrices for computation
-  vector<MyMatrix> matrices( 3 );
-  matrices[1].Random();
-  matrices[2].Random();
-
-  // Initialize IPC computation
-  IPCCounter perf;
-
-  vector<IPCCounter::Reading> ipc_measurements( 4000 );
-
-  perf.start();
-
-  for ( int i = 0; i < 2000; ++i ) {
-    ipc_measurements.at( i ) = perf.read();
-    matrices[0] = matrices[1] * matrices[2];
-  }
-
-  CheckSystemCall( "pwrite", pwrite( fd, nullptr, 0, 0 ) );
-
-  for ( int i = 2000; i < 4000; ++i ) {
-    ipc_measurements.at( i ) = perf.read();
-    matrices[0] = matrices[1] * matrices[2];
-  }
-
-  for ( int i = 1; i < 4000; ++i ) {
-    auto instructions = ipc_measurements.at( i ).instructions - ipc_measurements.at( i - 1 ).instructions;
-    auto cycles = ipc_measurements.at( i ).cycles - ipc_measurements.at( i - 1 ).cycles;
-    cout << i << " " << instructions << " " << cycles << " " << double( instructions ) / double( cycles ) << "\n";
-  }
-
-  return EXIT_SUCCESS;
+  cpu_set_t set;
+  CPU_ZERO( &set );
+  CPU_SET( 0, &set );
+  CheckSystemCall( "sched_setaffinity", sched_setaffinity( getpid(), sizeof( set ), &set ) );
 }
