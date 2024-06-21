@@ -6,6 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(etc/build_type.cmake)
 include(etc/cflags.cmake)
 include(etc/scanners.cmake)
+include(etc/packages.cmake)
 
 add_subdirectory(src)
 
