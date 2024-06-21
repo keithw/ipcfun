@@ -1,4 +1,5 @@
 #include <papi.h>
+#include <papiStdEventDefs.h>
 #include <sys/mman.h>
 
 #include <Eigen/Dense>
@@ -10,29 +11,52 @@
 
 using namespace std;
 
+using MyMatrix = Eigen::Matrix<double, 256, 256>;
+
 const char* str_or_null( const char* x )
 {
   return x ? x : "(null)";
 }
 
-inline void CheckPAPICall( const char* attempt, int ret )
+class IPCCounter
 {
-  if ( ret != PAPI_OK ) {
-    throw runtime_error( string( attempt ) + ": " + str_or_null( PAPI_strerror( ret ) ) );
+  int event_set_;
+
+  static inline int CheckPAPICall( const char* attempt, int ret )
+  {
+    if ( ret != PAPI_OK ) {
+      throw runtime_error( string( attempt ) + ": " + str_or_null( PAPI_strerror( ret ) ) );
+    }
+    return ret;
   }
-}
 
-using MyMatrix = Eigen::Matrix<double, 256, 256>;
+public:
+  IPCCounter() : event_set_( PAPI_NULL )
+  {
+    const int version_or_err = PAPI_library_init( PAPI_VER_CURRENT );
+    if ( version_or_err != PAPI_VER_CURRENT ) {
+      CheckPAPICall( "PAPI_library_init", version_or_err );
+    }
+    CheckPAPICall( "PAPI_create_eventset", PAPI_create_eventset( &event_set_ ) );
+    CheckPAPICall( "PAPI_add_event", PAPI_add_event( event_set_, PAPI_TOT_INS ) );
+    CheckPAPICall( "PAPI_add_event", PAPI_add_event( event_set_, PAPI_TOT_CYC ) );
+  }
 
-inline float instructions_per_cycle()
-{
-  float real_time, proc_time, ipc;
-  long long ins;
+  struct Reading
+  {
+    long long instructions;
+    long long cycles;
+  };
 
-  CheckPAPICall( "PAPI_inc", PAPI_ipc( &real_time, &proc_time, &ins, &ipc ) );
+  Reading read()
+  {
+    Reading ret;
+    CheckPAPICall( "PAPI_read", PAPI_read( event_set_, &ret.instructions ) );
+    return ret;
+  }
 
-  return ipc;
-}
+  void start() { CheckPAPICall( "PAPI_start", PAPI_start( event_set_ ) ); }
+};
 
 class tagged_error : public std::system_error
 {
@@ -70,23 +94,34 @@ int main()
     throw runtime_error( "memfd_create" );
   }
 
-  // Initialize matrices
+  // Initialize matrices for computation
   vector<MyMatrix> matrices( 3 );
   matrices[1].Random();
   matrices[2].Random();
 
-  vector<float> ipc_measurements( 4000 );
+  // Initialize IPC computation
+  IPCCounter perf;
+
+  vector<IPCCounter::Reading> ipc_measurements( 4000 );
+
+  perf.start();
 
   for ( int i = 0; i < 2000; ++i ) {
-    ipc_measurements.at( i ) = instructions_per_cycle();
+    ipc_measurements.at( i ) = perf.read();
     matrices[0] = matrices[1] * matrices[2];
   }
 
   CheckSystemCall( "pwrite", pwrite( fd, nullptr, 0, 0 ) );
 
   for ( int i = 2000; i < 4000; ++i ) {
-    ipc_measurements.at( i ) = instructions_per_cycle();
+    ipc_measurements.at( i ) = perf.read();
     matrices[0] = matrices[1] * matrices[2];
+  }
+
+  for ( int i = 1; i < 4000; ++i ) {
+    auto instructions = ipc_measurements.at( i ).instructions - ipc_measurements.at( i - 1 ).instructions;
+    auto cycles = ipc_measurements.at( i ).cycles - ipc_measurements.at( i - 1 ).cycles;
+    cout << i << " " << instructions << " " << cycles << " " << double( instructions ) / double( cycles ) << "\n";
   }
 
   return EXIT_SUCCESS;
