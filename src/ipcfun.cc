@@ -21,9 +21,11 @@ struct SamplePair
   IPCCounter::Reading pre, post;
 };
 
-int main()
+int main( int argc, char* argv[] [[maybe_unused]] )
 {
   ios::sync_with_stdio( false );
+
+  const bool do_syscall = argc > 1;
 
   // Open dummy file
   int fd = memfd_create( "dummy", 0 );
@@ -60,11 +62,11 @@ int main()
     }
 
     if ( i == system_call_at ) { // do 1-byte pwrite system call in this iteration
-      char data_to_write = 42;
-      if ( sizeof( data_to_write )
-           != static_cast<size_t>(
-             CheckSystemCall( "pwrite", pwrite( fd, &data_to_write, sizeof( data_to_write ), 0 ) ) ) ) {
-        throw runtime_error( "short write" );
+      if ( do_syscall ) {
+        char data_to_write = 42;
+        if ( 1 != static_cast<size_t>( CheckSystemCall( "pwrite", pwrite( fd, &data_to_write, 1, 0 ) ) ) ) {
+          throw runtime_error( "short write" );
+        }
       }
     } else { // otherwise, do computation
       const auto index = indices_to_sort[i];
@@ -101,6 +103,12 @@ int main()
 
     cout << inst_box_middle << " " << ipc << " " << inst_box_width << " ";
     cout << cycle_box_middle << " " << ipc << " " << cycle_box_width << "\n";
+  }
+
+  if ( do_syscall ) {
+    cerr << "Did system call at iteration " << system_call_at << "\n";
+  } else {
+    cerr << "Did not do system call\n";
   }
 
   return EXIT_SUCCESS;
