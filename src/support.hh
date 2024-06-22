@@ -76,7 +76,7 @@ inline int CheckSystemCall( const char* attempt, int ret )
   return ret;
 }
 
-static void lock_to_CPU_zero()
+inline void lock_to_CPU_zero()
 {
   cpu_set_t set;
   CPU_ZERO( &set );
