@@ -1,9 +1,12 @@
 #pragma once
 
+#include <charconv>
+#include <cstdint>
 #include <papi.h>
 #include <sched.h>
 #include <string>
 #include <system_error>
+#include <x86intrin.h>
 
 inline const char* str_or_null( const char* x )
 {
@@ -82,4 +85,26 @@ inline void lock_to_CPU_zero()
   CPU_ZERO( &set );
   CPU_SET( 0, &set );
   CheckSystemCall( "sched_setaffinity", sched_setaffinity( getpid(), sizeof( set ), &set ) );
+}
+
+inline uint64_t to_uint64( std::string_view str )
+{
+  uint64_t ret = -1;
+  const auto [ptr, ignore] = std::from_chars( str.data(), str.data() + str.size(), ret );
+  if ( ptr != str.data() + str.size() ) {
+    str.remove_prefix( ptr - str.data() );
+    throw std::runtime_error( "could not parse as integer: " + std::string( str ) );
+  }
+
+  return ret;
+}
+
+inline uint64_t read_tsc()
+{
+  // seems to be Intel's recommended sequence of fences (https://www.felixcloutier.com/x86/rdtsc)
+  _mm_mfence();
+  _mm_lfence();
+  uint64_t ret = __rdtsc();
+  _mm_lfence();
+  return ret;
 }
