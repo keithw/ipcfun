@@ -7,4 +7,7 @@ target_link_libraries(ipcfun2)
 add_executable("ipcfun3" "ipcfun3.cc")
 target_link_libraries(ipcfun3)
 
+add_executable("ipcfun4" "ipcfun4.cc")
+target_link_libraries(ipcfun4)
+
 add_executable("tscdemo" "tscdemo.cc")
