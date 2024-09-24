@@ -10,11 +10,9 @@
 
 using namespace std;
 
-const int N = 10000000;
-const int n_pages = 4;
+const int n_pages = 165;
 #define page_range 10240
 int a[page_range][1024];
-char buffer[1024];
 
 struct node
 {
@@ -28,7 +26,7 @@ public:
   Workload()
   {
     struct node* head = &addr[0];
-    for ( int i = 0; i < n_pages; i++ ) {
+    for ( int i = 0; i < n_pages * 100; i++ ) {
       head->addr = &a[( rand() % page_range )][128];
       head->next = &addr[( rand() % page_range )];
       head = head->next;
