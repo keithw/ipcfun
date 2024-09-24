@@ -23,10 +23,19 @@ struct node
 class Workload
 {
 public:
-  Workload()
+  Workload( unsigned int random_seed )
   {
+    srand( random_seed ); // consistent seed for initialization across benchmark runs
+
     struct node* head = &addr[0];
-    for ( int i = 0; i < n_pages * 100; i++ ) {
+    for ( int i = 0; i < page_range; i++ ) {
+      // make sure every entry is initialized, even if rand() produces a shortcut
+      addr[i].addr = &a[( rand() % page_range )][128];
+      addr[i].next = &addr[( rand() % page_range )];
+    }
+
+    // initialize per original code
+    for ( int i = 0; i < n_pages; i++ ) {
       head->addr = &a[( rand() % page_range )][128];
       head->next = &addr[( rand() % page_range )];
       head = head->next;
@@ -47,7 +56,8 @@ public:
 
 void usage_error( span<char*> args )
 {
-  cerr << "Usage: " << args[0] << " total_iterations when_sycall [=\"at_end\" or \"interspersed\" or \"never\"]\n";
+  cerr << "Usage: " << args[0]
+       << " total_iterations when_sycall [=\"at_end\" or \"interspersed\" or \"never\"] random_seed\n";
   throw runtime_error( "invalid usage" );
 }
 
@@ -60,7 +70,7 @@ int main( int argc, char* argv[] )
     abort();
   }
   auto args = span( argv, argc );
-  if ( args.size() != 3 ) {
+  if ( args.size() != 4 ) {
     usage_error( args );
   }
   auto total_iterations = to_uint64( args[1] );
@@ -80,6 +90,8 @@ int main( int argc, char* argv[] )
     usage_error( args );
   }
 
+  unsigned int random_seed = to_uint64( args[3] );
+
   // Open dummy file
   int fd = memfd_create( "dummy", 0 );
   if ( fd < 0 ) {
@@ -87,7 +99,7 @@ int main( int argc, char* argv[] )
   }
 
   // Initialize compute "workload"
-  Workload workload;
+  Workload workload { random_seed };
 
   uint64_t syscall_count = 0;
 
